@@ -1,0 +1,136 @@
+﻿@page "/Account/Login"
+
+@using System.ComponentModel.DataAnnotations
+@using Microsoft.AspNetCore.Authentication
+@using Microsoft.AspNetCore.Identity
+@using ProductoSaul.Data
+
+@inject SignInManager<ApplicationUser> SignInManager
+@inject ILogger<Login> Logger
+@inject NavigationManager NavigationManager
+@inject IdentityRedirectManager RedirectManager
+
+
+<PageTitle>Iniciar sesión</PageTitle>
+
+<h1>Iniciar sesión</h1>
+<div class="row">
+    <div class="col-md-4">
+        <section>
+            <StatusMessage Message="@errorMessage" />
+            <EditForm Model="Input" method="post" OnValidSubmit="LoginUser" FormName="login">
+                <DataAnnotationsValidator />
+                <h2>Usa una cuenta local para iniciar sesión.</h2>
+                <hr />
+                <ValidationSummary class="text-danger" role="alert" />
+
+                <div class="form-floating mb-3">
+                    <InputText @bind-Value="Input.Email" class="form-control" autocomplete="username" aria-required="true" placeholder="nombre@ejemplo.com" />
+                    <label for="email" class="form-label">Correo electrónico</label>
+                    <ValidationMessage For="() => Input.Email" class="text-danger" />
+                </div>
+
+                <div class="form-floating mb-3">
+                    <InputText type="password" @bind-Value="Input.Password" class="form-control" autocomplete="current-password" aria-required="true" placeholder="contraseña" />
+                    <label for="password" class="form-label">Contraseña</label>
+                    <ValidationMessage For="() => Input.Password" class="text-danger" />
+                </div>
+
+                <div class="checkbox mb-3">
+                    <label class="form-label">
+                        <InputCheckbox @bind-Value="Input.RememberMe" class="darker-border-checkbox form-check-input" />
+                        Recordarme
+                    </label>
+                </div>
+
+                <div>
+                    <button type="submit" class="w-100 btn btn-lg btn-primary">Iniciar sesión</button>
+                </div>
+
+                <div>
+                    <p>
+                        <a href="Account/ForgotPassword">¿Olvidaste tu contraseña?</a>
+                    </p>
+                    <p>
+                        <a href="@(NavigationManager.GetUriWithQueryParameters("Account/Register", new Dictionary<string, object?> { ["ReturnUrl"] = ReturnUrl }))">Regístrate como un nuevo usuario</a>
+                    </p>
+                    <p>
+                        <a href="Account/ResendEmailConfirmation">Reenviar confirmación de correo</a>
+                    </p>
+                </div>
+            </EditForm>
+        </section>
+    </div>
+    <div class="col-md-6 col-md-offset-2">
+        <section>
+            <h3>Usa otro servicio para iniciar sesión.</h3>
+            <hr />
+            <ExternalLoginPicker />
+        </section>
+    </div>
+</div>
+
+@code {
+    private string? errorMessage; // Mensaje de error en caso de intento fallido de inicio de sesión
+
+    [CascadingParameter]
+    private HttpContext HttpContext { get; set; } = default!; // Contexto HTTP actual
+
+    [SupplyParameterFromForm]
+    private InputModel Input { get; set; } = new(); // Modelo para enlazar los datos del formulario
+
+    [SupplyParameterFromQuery]
+    private string? ReturnUrl { get; set; } // URL de retorno después del inicio de sesión
+
+    // Acción que se ejecuta al inicializar el componente
+    protected override async Task OnInitializedAsync()
+    {
+        if (HttpMethods.IsGet(HttpContext.Request.Method))
+        {
+            // Limpia cualquier cookie externa existente para garantizar un proceso de inicio de sesión limpio
+            await HttpContext.SignOutAsync(IdentityConstants.ExternalScheme);
+        }
+    }
+
+    // Acción para iniciar sesión con los datos proporcionados
+    public async Task LoginUser()
+    {
+        // Intenta iniciar sesión con el correo y contraseña proporcionados
+        var result = await SignInManager.PasswordSignInAsync(Input.Email, Input.Password, Input.RememberMe, lockoutOnFailure: false);
+        if (result.Succeeded)
+        {
+            Logger.LogInformation("Usuario inició sesión.");
+            RedirectManager.RedirectTo(ReturnUrl); // Redirige al usuario después del inicio de sesión exitoso
+        }
+        else if (result.RequiresTwoFactor)
+        {
+            RedirectManager.RedirectTo(
+                "Account/LoginWith2fa",
+                new() { ["returnUrl"] = ReturnUrl, ["rememberMe"] = Input.RememberMe });
+        }
+        else if (result.IsLockedOut)
+        {
+            Logger.LogWarning("La cuenta del usuario está bloqueada.");
+            RedirectManager.RedirectTo("Account/Lockout");
+        }
+        else
+        {
+            errorMessage = "Error: Intento de inicio de sesión no válido."; // Mensaje de error en caso de fallo
+        }
+    }
+
+    // Modelo para los datos del formulario
+    private sealed class InputModel
+    {
+        [Required]
+        [EmailAddress]
+        public string Email { get; set; } = ""; // Correo electrónico del usuario
+
+        [Required]
+        [DataType(DataType.Password)]
+        public string Password { get; set; } = ""; // Contraseña del usuario
+
+        [Display(Name = "¿Recordarme?")]
+        public bool RememberMe { get; set; } // Indica si el usuario desea ser recordado
+    }
+}

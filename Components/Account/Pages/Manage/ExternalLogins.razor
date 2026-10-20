@@ -1,0 +1,145 @@
+﻿@page "/Account/Manage/ExternalLogins"
+
+@using Microsoft.AspNetCore.Authentication
+@using Microsoft.AspNetCore.Identity
+@using ProductoSaul.Data
+
+@inject UserManager<ApplicationUser> UserManager
+@inject SignInManager<ApplicationUser> SignInManager
+@inject IdentityUserAccessor UserAccessor
+@inject IUserStore<ApplicationUser> UserStore
+@inject IdentityRedirectManager RedirectManager
+
+<PageTitle>Gestionar tus inicios de sesión externos</PageTitle> 
+<StatusMessage />
+@if (currentLogins?.Count > 0)
+{
+    <h3>Inicios de sesión registrados</h3> 
+    <table class="table">
+        <tbody>
+            @foreach (var login in currentLogins)
+            {
+                <tr>
+                    <td>@login.ProviderDisplayName</td> 
+                    <td>
+                        @if (showRemoveButton)
+                        {
+                            <form @formname="@($"remove-login-{login.LoginProvider}")" @onsubmit="OnSubmitAsync" method="post">
+                                <AntiforgeryToken /> <!-- Protección contra ataques CSRF -->
+                                <div>
+                                    <input type="hidden" name="@nameof(LoginProvider)" value="@login.LoginProvider" />
+                                    <input type="hidden" name="@nameof(ProviderKey)" value="@login.ProviderKey" />
+                                    <button type="submit" class="btn btn-primary" title="Eliminar este inicio de sesión externo de @login.ProviderDisplayName">Eliminar</button>
+                                </div>
+                            </form>
+                        }
+                        else
+                        {
+                            @: &nbsp; 
+                        }
+                    </td>
+                </tr>
+            }
+        </tbody>
+    </table>
+}
+
+@if (otherLogins?.Count > 0)
+{
+    <h4>Agregar otro servicio para iniciar sesión.</h4> 
+    <hr />
+    <form class="form-horizontal" action="Account/Manage/LinkExternalLogin" method="post">
+        <AntiforgeryToken /> <!-- Protección contra ataques CSRF -->
+        <div>
+            <p>
+                @foreach (var provider in otherLogins)
+                {
+                    <button type="submit" class="btn btn-primary" name="Provider" value="@provider.Name" title="Inicia sesión usando tu cuenta de @provider.DisplayName">
+                        @provider.DisplayName
+                    </button>
+                }
+            </p>
+        </div>
+    </form>
+}
+
+@code {
+    public const string LinkLoginCallbackAction = "LinkLoginCallback"; // Acción para el callback de enlace de login externo
+
+    private ApplicationUser user = default!; // Usuario autenticado actual
+    private IList<UserLoginInfo>? currentLogins; // Lista de logins externos actuales
+    private IList<AuthenticationScheme>? otherLogins; // Lista de logins externos disponibles para agregar
+    private bool showRemoveButton; // Indica si se puede mostrar el botón para eliminar logins
+
+    [CascadingParameter]
+    private HttpContext HttpContext { get; set; } = default!; // Contexto HTTP actual
+
+    [SupplyParameterFromForm]
+    private string? LoginProvider { get; set; } // Proveedor del login que se desea eliminar
+
+    [SupplyParameterFromForm]
+    private string? ProviderKey { get; set; } // Clave del login que se desea eliminar
+
+    [SupplyParameterFromQuery]
+    private string? Action { get; set; } // Acción actual tomada desde la página
+
+    // Inicialización del componente
+    protected override async Task OnInitializedAsync()
+    {
+        user = await UserAccessor.GetRequiredUserAsync(HttpContext); // Obtiene el usuario autenticado actual
+        currentLogins = await UserManager.GetLoginsAsync(user); // Obtiene los logins externos actuales
+        otherLogins = (await SignInManager.GetExternalAuthenticationSchemesAsync())
+            .Where(auth => currentLogins.All(ul => auth.Name != ul.LoginProvider)) // Filtra logins no vinculados
+            .ToList();
+
+        // Verifica si el usuario tiene una contraseña o más de un login
+        string? passwordHash = null;
+        if (UserStore is IUserPasswordStore<ApplicationUser> userPasswordStore)
+        {
+            passwordHash = await userPasswordStore.GetPasswordHashAsync(user, HttpContext.RequestAborted);
+        }
+
+        showRemoveButton = passwordHash is not null || currentLogins.Count > 1;
+
+        // Si la acción es para vincular un login, realiza el callback
+        if (HttpMethods.IsGet(HttpContext.Request.Method) && Action == LinkLoginCallbackAction)
+        {
+            await OnGetLinkLoginCallbackAsync();
+        }
+    }
+
+    // Acción para eliminar un login externo
+    private async Task OnSubmitAsync()
+    {
+        var result = await UserManager.RemoveLoginAsync(user, LoginProvider!, ProviderKey!);
+        if (!result.Succeeded)
+        {
+            RedirectManager.RedirectToCurrentPageWithStatus("Error: No se pudo eliminar el inicio de sesión externo.", HttpContext);
+        }
+
+        await SignInManager.RefreshSignInAsync(user); // Refresca la sesión del usuario
+        RedirectManager.RedirectToCurrentPageWithStatus("El inicio de sesión externo fue eliminado.", HttpContext);
+    }
+
+    // Callback para vincular un login externo
+    private async Task OnGetLinkLoginCallbackAsync()
+    {
+        var userId = await UserManager.GetUserIdAsync(user);
+        var info = await SignInManager.GetExternalLoginInfoAsync(userId);
+        if (info is null)
+        {
+            RedirectManager.RedirectToCurrentPageWithStatus("Error: No se pudo cargar la información del inicio de sesión externo.", HttpContext);
+        }
+
+        var result = await UserManager.AddLoginAsync(user, info);
+        if (!result.Succeeded)
+        {
+            RedirectManager.RedirectToCurrentPageWithStatus("Error: No se pudo agregar el inicio de sesión externo. Cada cuenta puede estar asociada con un solo inicio de sesión externo.", HttpContext);
+        }
+
+        // Cierra la cookie externa existente para limpiar el proceso de inicio de sesión
+        await HttpContext.SignOutAsync(IdentityConstants.ExternalScheme);
+
+        RedirectManager.RedirectToCurrentPageWithStatus("El inicio de sesión externo fue agregado.", HttpContext);
+    }
+}

@@ -1,0 +1,102 @@
+﻿@page "/Account/Manage/TwoFactorAuthentication"
+
+@using Microsoft.AspNetCore.Http.Features
+@using Microsoft.AspNetCore.Identity
+@using ProductoSaul.Data
+
+@inject UserManager<ApplicationUser> UserManager
+@inject SignInManager<ApplicationUser> SignInManager
+@inject IdentityUserAccessor UserAccessor
+@inject IdentityRedirectManager RedirectManager
+
+<PageTitle>Autenticación de dos factores (2FA)</PageTitle> 
+<StatusMessage /> 
+<h3>Autenticación de dos factores (2FA)</h3> 
+@if (canTrack)
+{
+    if (is2faEnabled)
+    {
+        if (recoveryCodesLeft == 0)
+        {
+            <div class="alert alert-danger">
+                <strong>No te quedan códigos de recuperación.</strong>
+                <p>Debes <a href="Account/Manage/GenerateRecoveryCodes">generar un nuevo conjunto de códigos de recuperación</a> antes de poder iniciar sesión con un código de recuperación.</p>
+            </div>
+        }
+        else if (recoveryCodesLeft == 1)
+        {
+            <div class="alert alert-danger">
+                <strong>Te queda 1 código de recuperación.</strong>
+                <p>Puedes <a href="Account/Manage/GenerateRecoveryCodes">generar un nuevo conjunto de códigos de recuperación</a>.</p>
+            </div>
+        }
+        else if (recoveryCodesLeft <= 3)
+        {
+            <div class="alert alert-warning">
+                <strong>Te quedan @recoveryCodesLeft códigos de recuperación.</strong>
+                <p>Deberías <a href="Account/Manage/GenerateRecoveryCodes">generar un nuevo conjunto de códigos de recuperación</a>.</p>
+            </div>
+        }
+
+        if (isMachineRemembered)
+        {
+            <form style="display: inline-block" @formname="forget-browser" @onsubmit="OnSubmitForgetBrowserAsync" method="post">
+                <AntiforgeryToken />
+                <button type="submit" class="btn btn-primary">Olvidar este navegador</button>
+            </form>
+        }
+
+        <a href="Account/Manage/Disable2fa" class="btn btn-primary">Deshabilitar 2FA</a>
+        <a href="Account/Manage/GenerateRecoveryCodes" class="btn btn-primary">Restablecer códigos de recuperación</a>
+    }
+
+    <h4>Aplicación autenticadora</h4> 
+    @if (!hasAuthenticator)
+    {
+        <a href="Account/Manage/EnableAuthenticator" class="btn btn-primary">Agregar aplicación autenticadora</a>
+    }
+    else
+    {
+        <a href="Account/Manage/EnableAuthenticator" class="btn btn-primary">Configurar aplicación autenticadora</a>
+        <a href="Account/Manage/ResetAuthenticator" class="btn btn-primary">Restablecer aplicación autenticadora</a>
+    }
+}
+else
+{
+    <div class="alert alert-danger">
+        <strong>No se ha aceptado la política de privacidad y cookies.</strong>
+        <p>Debes aceptar la política antes de poder habilitar la autenticación de dos factores.</p>
+    </div>
+}
+
+@code {
+    private bool canTrack; // Indica si se permite el seguimiento según la política de privacidad
+    private bool hasAuthenticator; // Indica si el usuario tiene configurada una aplicación autenticadora
+    private int recoveryCodesLeft; // Cantidad de códigos de recuperación restantes
+    private bool is2faEnabled; // Indica si la autenticación de dos factores está habilitada
+    private bool isMachineRemembered; // Indica si el navegador actual está recordado como confiable
+
+    [CascadingParameter]
+    private HttpContext HttpContext { get; set; } = default!; // Contexto HTTP actual
+
+    // Inicialización del componente
+    protected override async Task OnInitializedAsync()
+    {
+        var user = await UserAccessor.GetRequiredUserAsync(HttpContext); // Obtiene el usuario autenticado actual
+        canTrack = HttpContext.Features.Get<ITrackingConsentFeature>()?.CanTrack ?? true; // Verifica si se permite el seguimiento
+        hasAuthenticator = await UserManager.GetAuthenticatorKeyAsync(user) is not null; // Verifica si hay una clave de autenticación configurada
+        is2faEnabled = await UserManager.GetTwoFactorEnabledAsync(user); // Verifica si la 2FA está habilitada
+        isMachineRemembered = await SignInManager.IsTwoFactorClientRememberedAsync(user); // Verifica si el navegador está recordado
+        recoveryCodesLeft = await UserManager.CountRecoveryCodesAsync(user); // Obtiene la cantidad de códigos de recuperación restantes
+    }
+
+    // Acción al enviar el formulario para olvidar el navegador confiable actual
+    private async Task OnSubmitForgetBrowserAsync()
+    {
+        await SignInManager.ForgetTwoFactorClientAsync(); // Olvida el navegador actual
+
+        RedirectManager.RedirectToCurrentPageWithStatus(
+            "El navegador actual ha sido olvidado. Cuando vuelvas a iniciar sesión desde este navegador, se te pedirá tu código de 2FA.",
+            HttpContext); // Redirige con un mensaje de confirmación
+    }
+}

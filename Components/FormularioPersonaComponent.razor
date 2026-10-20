@@ -1,0 +1,72 @@
+﻿@rendermode InteractiveServer
+@inject IPersonaServices getPersonaService
+@inject NavigationManager navigation
+<EditForm Model="objetoPersona" OnValidSubmit="Metodo">
+    <div class="row mb-3">
+        <label for="nombre" class="col-sm-6 col-md-3 col-form-label">
+            Ingresa tu nombre :
+        </label>
+        <div class="col-sm-6 col-md-9">
+            <InputText @bind-Value="objetoPersona.Nombre" class="form-control" id="nombre" />
+            <ValidationMessage For="@(() => objetoPersona.Nombre)" />
+        </div>
+    </div>
+    <div class="row mb-3">
+        <label for="apellidos" class="col-sm-6 col-md-3 col-form-label">
+            Ingresa tus apellidos :
+        </label>
+        <div class="col-sm-6 col-md-9">
+            <InputText @bind-Value="objetoPersona.Apellidos" class="form-control-plaintext" id="apellidos" />
+            <ValidationMessage For="@(() => objetoPersona.Apellidos)" />
+        </div>
+    </div>
+    <div class="row mb-3">
+        <label for="correo" class="col-sm-6 col-md-3 col-form-label">
+            Escribe tu correo eléctronico :
+        </label>
+        <div class="col-sm-6 col-md-9">
+            <input type="email" @bind="objetoPersona.Correo" class="form-control" id="correo" />
+            <ValidationMessage For="@(() => objetoPersona.Correo)" />
+        </div>
+    </div>
+    <div class="row mb-3">
+        <label class="col-sm-6 col-md-9 col-form-label" for="telefono">
+            Escribe tu teléfono (si eres de otro país escribe tu signo + extensión de tu país)
+        </label>
+        <div class="col-sm-6 col-md-9">
+            <input type="tel" @bind="objetoPersona.TelefonoWhatsapp" class="form-control" id="telefono" />
+            <ValidationMessage For="@(() => objetoPersona.TelefonoWhatsapp)" />
+        </div>
+    </div>
+    
+    <div class="my-5 ms-5">
+        <button class="btn btn-success" type="submit">Envíar</button>
+        <button type="button" @onclick="Salir" class="btn btn-warning ms-5">Regresar</button>
+    </div>
+
+    <DataAnnotationsValidator />
+    <ValidationSummary />
+</EditForm>
+
+@code{
+    [Parameter]
+    public PersonaEntity objetoPersona { get; set; } = new();
+    [Parameter]
+    public EventCallback Metodo { get; set; }
+    List<PersonaEntity> getPersonaEntities = new();
+    
+    protected override async Task OnParametersSetAsync()
+    {
+        var resultadoPersona = await getPersonaService.ListaPersonaAsync();
+        if (resultadoPersona != null)
+        {
+            getPersonaEntities = resultadoPersona;
+        }
+    }
+
+    private void Salir()
+    {
+        navigation.NavigateTo("mensaje");
+    }
+
+            }

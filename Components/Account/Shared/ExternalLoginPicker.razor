@@ -1,0 +1,46 @@
+﻿@using Microsoft.AspNetCore.Authentication
+@using Microsoft.AspNetCore.Identity
+@using ProductoSaul.Data
+
+@inject SignInManager<ApplicationUser> SignInManager
+@inject IdentityRedirectManager RedirectManager
+
+@if (externalLogins.Length == 0)
+{
+    <div>
+        <p>
+            No hay servicios de autenticación externa configurados. Consulta este <a href="https://go.microsoft.com/fwlink/?LinkID=532715">
+                artículo
+                sobre cómo configurar esta aplicación ASP.NET para soportar el inicio de sesión mediante servicios externos
+            </a>.
+        </p>
+    </div>
+}
+else
+{
+    <form class="form-horizontal" action="Account/PerformExternalLogin" method="post">
+        <div>
+            <AntiforgeryToken />
+            <input type="hidden" name="ReturnUrl" value="@ReturnUrl" />
+            <p>
+                @foreach (var provider in externalLogins)
+                {
+                    <button type="submit" class="btn btn-primary" name="provider" value="@provider.Name" title="Iniciar sesión usando tu cuenta de @provider.DisplayName">@provider.DisplayName</button>
+                }
+            </p>
+        </div>
+    </form>
+}
+
+@code {
+    private AuthenticationScheme[] externalLogins = []; // Lista de proveedores de autenticación externa disponibles
+
+    [SupplyParameterFromQuery]
+    private string? ReturnUrl { get; set; } // URL de retorno después del inicio de sesión
+
+    // Inicialización del componente
+    protected override async Task OnInitializedAsync()
+    {
+        externalLogins = (await SignInManager.GetExternalAuthenticationSchemesAsync()).ToArray(); // Obtiene los esquemas de autenticación externa disponibles
+    }
+}

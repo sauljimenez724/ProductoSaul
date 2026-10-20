@@ -1,0 +1,71 @@
+﻿@page "/Account/Manage/Disable2fa"
+
+@using Microsoft.AspNetCore.Identity
+@using ProductoSaul.Data
+@inject UserManager<ApplicationUser> UserManager
+@inject IdentityUserAccessor UserAccessor
+@inject IdentityRedirectManager RedirectManager
+@inject ILogger<Disable2fa> Logger
+
+<PageTitle>Deshabilitar autenticación de dos factores (2FA)</PageTitle>
+<StatusMessage />
+
+<h3>Deshabilitar autenticación de dos factores (2FA)</h3> 
+<div class="alert alert-warning" role="alert">
+    <p>
+        <strong>Esta acción solo deshabilita la autenticación de dos factores (2FA).</strong>
+    </p>
+    <p>
+        Deshabilitar 2FA no cambia las claves utilizadas en las aplicaciones autenticadoras.
+        Si deseas cambiar la clave usada en una aplicación autenticadora,
+        debes <a href="Account/Manage/ResetAuthenticator">restablecer tus claves de autenticación.</a>
+    </p>
+</div>
+
+<div>
+    <form @formname="disable-2fa" @onsubmit="OnSubmitAsync" method="post">
+        <AntiforgeryToken /> <!-- Protección contra ataques CSRF -->
+        <button class="btn btn-danger" type="submit">Deshabilitar 2FA</button> <!-- Botón de acción -->
+    </form>
+</div>
+
+@code {
+    private ApplicationUser user = default!; // Usuario autenticado actual
+
+    [CascadingParameter]
+    private HttpContext HttpContext { get; set; } = default!; // Contexto HTTP actual
+
+    // Inicialización del componente
+    protected override async Task OnInitializedAsync()
+    {
+        // Obtiene el usuario actual
+        user = await UserAccessor.GetRequiredUserAsync(HttpContext);
+
+        // Verifica que 2FA esté habilitado; lanza una excepción si no lo está
+        if (HttpMethods.IsGet(HttpContext.Request.Method) && !await UserManager.GetTwoFactorEnabledAsync(user))
+        {
+            throw new InvalidOperationException("No se puede deshabilitar 2FA porque actualmente no está habilitado.");
+        }
+    }
+
+    // Acción al enviar el formulario
+    private async Task OnSubmitAsync()
+    {
+        // Intenta deshabilitar la autenticación de dos factores
+        var disable2faResult = await UserManager.SetTwoFactorEnabledAsync(user, false);
+        if (!disable2faResult.Succeeded)
+        {
+            throw new InvalidOperationException("Ocurrió un error inesperado al deshabilitar 2FA.");
+        }
+
+        // Registra el evento de deshabilitación en los logs
+        var userId = await UserManager.GetUserIdAsync(user);
+        Logger.LogInformation("El usuario con ID '{UserId}' deshabilitó 2FA.", userId);
+
+        // Redirige al usuario a la página de configuración de 2FA con un mensaje de estado
+        RedirectManager.RedirectToWithStatus(
+            "Account/Manage/TwoFactorAuthentication",
+            "Se ha deshabilitado 2FA. Puedes habilitarlo nuevamente configurando una aplicación autenticadora.",
+            HttpContext);
+    }
+}

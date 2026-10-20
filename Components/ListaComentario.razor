@@ -1,0 +1,72 @@
+﻿@rendermode InteractiveServer
+@inject IComentarioServices GetComentarioServices
+@inject NavigationManager navigation
+<div class="container">
+    @if(getComentarios == null)
+    {
+        <p class="text-center bg-dark"><em>
+            Cargando comentario ...
+            </em></p>
+    }
+    else if(getComentarios.Count == 0)
+    {
+        <p>
+            No se ha hecho ningún comentario .
+        </p>
+    }
+    else
+    {
+        <ul>
+            <li>@comentario</li>
+        </ul>
+    <table class="table table-bordered table-hover table-dark">
+        <caption>
+            Comentarios
+        </caption>
+    <thead>
+        <tr>
+            <th>Fecha</th>
+        <th>Nombre</th>
+        <th>Apellidos</th>
+        <th>Comentarios</th>
+<th>Editar</th>        
+<th>Eliminar</th>        
+</tr>
+    </thead>
+<tbody>
+    @foreach(var persona in getComentarios)
+                {
+                    <tr>
+                        
+                        <td>@persona.Fecha.ToShortDateString()</td>
+                    <td>@persona.Persona?.Nombre</td>
+                    <td>@persona.Persona?.Apellidos</td>
+                    <td>@persona.Texto</td>
+                    <td>
+                        <a href="comentarios/editar/@persona.ComentarioId">Editar</a>                    
+                        </td>
+                    <td>
+                        <a href="comentarios/eliminar/@persona.ComentarioId">Eliminar</a>
+                    </td>
+                    </tr>
+                }
+            </tbody>    
+</table>
+    }
+</div>
+<a href="comentarios">Ver comentarios</a>
+
+@code {
+    List<ComentarioEntity> getComentarios = new();
+    string comentario => getComentarios.Count == 1
+    ? "Se hizo un comentario ." : $"Se hicieron {getComentarios.Count} comentarios .";
+
+    protected override async Task OnInitializedAsync()
+    {
+        var resultado = await GetComentarioServices.ListaComentarioAsync();
+        if(resultado != null)
+        {
+            getComentarios = resultado;
+        }
+    }
+}

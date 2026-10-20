@@ -1,0 +1,70 @@
+﻿@page "/Account/ConfirmEmailChange"
+
+@using System.Text
+@using Microsoft.AspNetCore.Identity
+@using Microsoft.AspNetCore.WebUtilities
+@using ProductoSaul.Data
+
+@inject UserManager<ApplicationUser> UserManager
+@inject SignInManager<ApplicationUser> SignInManager
+@inject IdentityRedirectManager RedirectManager
+
+
+<PageTitle>Confirmar cambio de correo electrónico</PageTitle>
+<h1>Confirmar cambio de correo electrónico</h1> 
+<StatusMessage Message="@message" /> 
+
+@code {
+    private string? message; // Mensaje de estado para informar al usuario
+
+    [CascadingParameter]
+    private HttpContext HttpContext { get; set; } = default!; // Contexto HTTP actual
+
+    [SupplyParameterFromQuery]
+    private string? UserId { get; set; } // ID del usuario proporcionado en la consulta
+
+    [SupplyParameterFromQuery]
+    private string? Email { get; set; } // Nueva dirección de correo proporcionada en la consulta
+
+    [SupplyParameterFromQuery]
+    private string? Code { get; set; } // Código de confirmación proporcionado en la consulta
+
+    // Inicialización del componente
+    protected override async Task OnInitializedAsync()
+    {
+        if (UserId is null || Email is null || Code is null)
+        {
+            // Redirige al inicio de sesión con un mensaje de error si faltan parámetros
+            RedirectManager.RedirectToWithStatus(
+                "Account/Login", "Error: Enlace de confirmación de cambio de correo no válido.", HttpContext);
+        }
+
+        var user = await UserManager.FindByIdAsync(UserId); // Busca al usuario por ID
+        if (user is null)
+        {
+            message = $"No se pudo encontrar al usuario con el ID '{UserId}'"; // Mensaje de error si no se encuentra el usuario
+            return;
+        }
+
+        // Decodifica el código de confirmación y realiza el cambio de correo electrónico
+        var code = Encoding.UTF8.GetString(WebEncoders.Base64UrlDecode(Code));
+        var result = await UserManager.ChangeEmailAsync(user, Email, code);
+        if (!result.Succeeded)
+        {
+            message = "Error al cambiar el correo electrónico."; // Mensaje de error si el cambio falla
+            return;
+        }
+
+        // En la interfaz, el correo electrónico y el nombre de usuario son los mismos,
+        // por lo que también se actualiza el nombre de usuario.
+        var setUserNameResult = await UserManager.SetUserNameAsync(user, Email);
+        if (!setUserNameResult.Succeeded)
+        {
+            message = "Error al cambiar el nombre de usuario."; // Mensaje de error si el cambio falla
+            return;
+        }
+
+        await SignInManager.RefreshSignInAsync(user); // Refresca la sesión del usuario
+        message = "Gracias por confirmar el cambio de tu correo electrónico."; // Mensaje de éxito
+    }
+}

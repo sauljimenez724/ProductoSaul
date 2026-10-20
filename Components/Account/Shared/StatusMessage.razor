@@ -1,0 +1,32 @@
+﻿@if (!string.IsNullOrEmpty(DisplayMessage))
+{
+    var statusMessageClass = DisplayMessage.StartsWith("Error") ? "danger" : "success";
+    <div class="alert alert-@statusMessageClass" role="alert">
+        @DisplayMessage
+    </div>
+}
+
+@code {
+    private string? messageFromCookie; // Mensaje obtenido de las cookies del cliente
+
+    [Parameter]
+    public string? Message { get; set; } // Mensaje proporcionado como parámetro al componente
+
+    [CascadingParameter]
+    private HttpContext HttpContext { get; set; } = default!; // Contexto HTTP para obtener y manejar las cookies
+
+    private string? DisplayMessage => Message ?? messageFromCookie; // Mensaje que se mostrará al usuario
+
+    // Inicialización del componente
+    protected override void OnInitialized()
+    {
+        // Obtiene el mensaje almacenado en la cookie de estado
+        messageFromCookie = HttpContext.Request.Cookies[IdentityRedirectManager.StatusCookieName];
+
+        // Elimina la cookie después de leer su contenido para evitar reutilización
+        if (messageFromCookie is not null)
+        {
+            HttpContext.Response.Cookies.Delete(IdentityRedirectManager.StatusCookieName);
+        }
+    }
+}

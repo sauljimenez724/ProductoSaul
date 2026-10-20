@@ -1,0 +1,99 @@
+﻿@page "/Account/Manage"
+
+@using System.ComponentModel.DataAnnotations
+@using Microsoft.AspNetCore.Identity
+@using ProductoSaul.Data
+
+@inject UserManager<ApplicationUser> UserManager
+@inject SignInManager<ApplicationUser> SignInManager
+@inject IdentityUserAccessor UserAccessor
+@inject IdentityRedirectManager RedirectManager
+
+<PageTitle>Perfil</PageTitle>
+<h3>Perfil</h3> 
+<StatusMessage /> 
+
+<div class="row">
+    <div class="col-md-6">
+        <EditForm Model="Input" FormName="profile" OnValidSubmit="OnValidSubmitAsync" method="post">
+            <DataAnnotationsValidator /> <!-- Validador para las anotaciones de datos -->
+            <ValidationSummary class="text-danger" role="alert" /> <!-- Muestra resumen de errores -->
+            <div class="form-floating mb-3">
+                <input type="text" value="@username" class="form-control" placeholder="Por favor, elige tu nombre de usuario." disabled />
+                <label for="username" class="form-label">Nombre de usuario</label>
+            </div>
+            <div class="form-floating mb-3">
+                <InputText @bind-Value="Input.FullName" class="form-control" placeholder="Por favor, ingrese su nombre completo." />
+                <label for="fullname" class="form-label">Nombre completo :</label>
+                <ValidationMessage For="() => Input.FullName" class="text-danger" />
+            </div>
+            
+            <div class="form-floating mb-3">
+                <InputText @bind-Value="Input.PhoneNumber" class="form-control" placeholder="Por favor, introduce tu número de teléfono." />
+                <label for="phone-number" class="form-label">Número de teléfono</label>
+                <ValidationMessage For="() => Input.PhoneNumber" class="text-danger" />
+            </div>
+
+            <button type="submit" class="w-100 btn btn-lg btn-primary">Guardar</button>
+        </EditForm>
+    </div>
+</div>
+
+@code {
+    private ApplicationUser user = default!; // Usuario autenticado actual
+    private string? username; // Nombre de usuario actual
+    private string? phoneNumber; // Número de teléfono actual
+
+    [CascadingParameter]
+    private HttpContext HttpContext { get; set; } = default!; // Contexto HTTP actual
+
+    [SupplyParameterFromForm]
+    private InputModel Input { get; set; } = new(); // Modelo para enlazar los datos del formulario
+
+    // Inicialización del componente
+    protected override async Task OnInitializedAsync()
+    {
+        user = await UserAccessor.GetRequiredUserAsync(HttpContext); // Obtiene el usuario autenticado actual
+        username = await UserManager.GetUserNameAsync(user); // Obtiene el nombre de usuario
+        phoneNumber = await UserManager.GetPhoneNumberAsync(user); // Obtiene el número de teléfono
+        // Asignamos al modelo el valor de la propiedad nombre completo del usuario.
+        Input.FullName ??= user.FullName;
+        Input.PhoneNumber ??= phoneNumber; // Inicializa el campo del número de teléfono si es nulo
+    }
+
+    // Acción al enviar el formulario
+    private async Task OnValidSubmitAsync()
+    {
+        if (Input.PhoneNumber != phoneNumber)
+        {
+            // Actualiza el número de teléfono si ha cambiado
+            var setPhoneResult = await UserManager.SetPhoneNumberAsync(user, Input.PhoneNumber);
+            if (!setPhoneResult.Succeeded)
+            {
+                RedirectManager.RedirectToCurrentPageWithStatus("Error: No se pudo actualizar el número de teléfono.", HttpContext);
+            }
+        }
+        // Actualizar nombre completo del usuario  si ha cambiado
+        if(Input.FullName != user.FullName)
+        {
+            user.FullName = Input.FullName ?? string.Empty;
+            var updateResult = await UserManager.UpdateAsync(user); 
+            if(!updateResult.Succeeded)
+            {
+                RedirectManager.RedirectToCurrentPageWithStatus("Error:No se pudo actualizar el nombre completo.", HttpContext);
+            }
+        }
+        await SignInManager.RefreshSignInAsync(user); // Refresca la sesión del usuario
+        RedirectManager.RedirectToCurrentPageWithStatus("Tu perfil ha sido actualizado", HttpContext); // Redirige con mensaje de éxito
+    }
+
+    // Modelo para los datos del formulario
+    private sealed class InputModel
+    {
+        [Phone]
+        [Display(Name = "Número de teléfono")]
+        public string? PhoneNumber { get; set; } // Número de teléfono del usuario
+        [Display(Name = "Full Name")]
+        public string? FullName { get; set; }
+    }
+}

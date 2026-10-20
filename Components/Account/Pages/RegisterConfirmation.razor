@@ -1,0 +1,69 @@
+﻿@page "/Account/RegisterConfirmation"
+
+@using System.Text
+@using Microsoft.AspNetCore.Identity
+@using Microsoft.AspNetCore.WebUtilities
+@using ProductoSaul.Data
+
+@inject UserManager<ApplicationUser> UserManager
+@inject IEmailSender<ApplicationUser> EmailSender
+@inject NavigationManager NavigationManager
+@inject IdentityRedirectManager RedirectManager
+
+<PageTitle>Confirmación de registro</PageTitle>
+
+<h1>Confirmación de registro</h1>
+
+<StatusMessage Message="@statusMessage" />
+
+@if (emailConfirmationLink is not null)
+{
+    <p>
+        Esta aplicación no tiene actualmente un servicio de envío de correos real configurado. Consulta <a href="https://aka.ms/aspaccountconf">esta documentación</a> para configurar uno.
+        Normalmente, esto sería enviado por correo: <a href="@emailConfirmationLink">Haz clic aquí para confirmar tu cuenta</a>
+    </p>
+}
+else
+{
+    <p>Por favor, revisa tu correo electrónico para confirmar tu cuenta.</p>
+}
+
+@code {
+    private string? emailConfirmationLink; // Enlace de confirmación generado en caso de usar un emulador de correo
+    private string? statusMessage; // Mensaje de estado para errores o confirmaciones
+
+    [CascadingParameter]
+    private HttpContext HttpContext { get; set; } = default!; // Contexto HTTP actual
+
+    [SupplyParameterFromQuery]
+    private string? Email { get; set; } // Correo electrónico proporcionado en la consulta
+
+    [SupplyParameterFromQuery]
+    private string? ReturnUrl { get; set; } // URL de retorno después de la confirmación
+
+    // Inicialización del componente
+    protected override async Task OnInitializedAsync()
+    {
+        if (Email is null)
+        {
+            RedirectManager.RedirectTo(""); // Redirige a la página de inicio si no se proporciona el correo
+        }
+
+        var user = await UserManager.FindByEmailAsync(Email); // Busca al usuario por correo electrónico
+        if (user is null)
+        {
+            HttpContext.Response.StatusCode = StatusCodes.Status404NotFound; // Devuelve un estado 404 si no se encuentra al usuario
+            statusMessage = "Error al encontrar un usuario con el correo proporcionado.";
+        }
+        else if (EmailSender is IdentityNoOpEmailSender)
+        {
+            // Genera un enlace de confirmación para entornos de prueba sin servicio de correo configurado
+            var userId = await UserManager.GetUserIdAsync(user);
+            var code = await UserManager.GenerateEmailConfirmationTokenAsync(user);
+            code = WebEncoders.Base64UrlEncode(Encoding.UTF8.GetBytes(code));
+            emailConfirmationLink = NavigationManager.GetUriWithQueryParameters(
+                NavigationManager.ToAbsoluteUri("Account/ConfirmEmail").AbsoluteUri,
+                new Dictionary<string, object?> { ["userId"] = userId, ["code"] = code, ["returnUrl"] = ReturnUrl });
+        }
+    }
+}

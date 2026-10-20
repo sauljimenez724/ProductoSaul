@@ -1,0 +1,49 @@
+﻿@page "/Account/ConfirmEmail"
+
+@using System.Text
+@using Microsoft.AspNetCore.Identity
+@using Microsoft.AspNetCore.WebUtilities
+@using ProductoSaul.Data
+
+@inject UserManager<ApplicationUser> UserManager
+@inject IdentityRedirectManager RedirectManager
+
+<PageTitle>Confirmar correo electrónico</PageTitle> 
+
+<h1>Confirmar correo electrónico</h1> 
+<StatusMessage Message="@statusMessage" /> 
+@code {
+    private string? statusMessage; // Mensaje de estado para informar al usuario
+
+    [CascadingParameter]
+    private HttpContext HttpContext { get; set; } = default!; // Contexto HTTP actual
+
+    [SupplyParameterFromQuery]
+    private string? UserId { get; set; } // ID del usuario proporcionado en la consulta
+
+    [SupplyParameterFromQuery]
+    private string? Code { get; set; } // Código de confirmación proporcionado en la consulta
+
+    // Inicialización del componente
+    protected override async Task OnInitializedAsync()
+    {
+        if (UserId is null || Code is null)
+        {
+            RedirectManager.RedirectTo(""); // Redirige si faltan parámetros
+        }
+
+        var user = await UserManager.FindByIdAsync(UserId); // Busca al usuario por ID
+        if (user is null)
+        {
+            HttpContext.Response.StatusCode = StatusCodes.Status404NotFound; // Configura el estado HTTP como no encontrado
+            statusMessage = $"Error al cargar el usuario con ID {UserId}"; // Mensaje de error si el usuario no se encuentra
+        }
+        else
+        {
+            // Decodifica el código de confirmación y confirma el correo electrónico
+            var code = Encoding.UTF8.GetString(WebEncoders.Base64UrlDecode(Code));
+            var result = await UserManager.ConfirmEmailAsync(user, code);
+            statusMessage = result.Succeeded ? "Gracias por confirmar tu correo electrónico." : "Error al confirmar tu correo electrónico."; // Mensaje según el resultado
+        }
+    }
+}

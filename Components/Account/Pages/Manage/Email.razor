@@ -1,0 +1,131 @@
+﻿@page "/Account/Manage/Email"
+
+@using System.ComponentModel.DataAnnotations
+@using System.Text
+@using System.Text.Encodings.Web
+@using Microsoft.AspNetCore.Identity
+@using Microsoft.AspNetCore.WebUtilities
+@using ProductoSaul.Data
+
+@inject UserManager<ApplicationUser> UserManager
+@inject IEmailSender<ApplicationUser> EmailSender
+@inject IdentityUserAccessor UserAccessor
+@inject NavigationManager NavigationManager
+
+<PageTitle>Gestionar correo electrónico</PageTitle> 
+
+<h3>Gestionar correo electrónico</h3>
+<StatusMessage Message="@message" />
+<div class="row">
+    <div class="col-md-6">
+        <form @onsubmit="OnSendEmailVerificationAsync" @formname="send-verification" id="send-verification-form" method="post">
+            <AntiforgeryToken /> <!-- Protección contra ataques CSRF -->
+        </form>
+
+        <EditForm Model="Input" FormName="change-email" OnValidSubmit="OnValidSubmitAsync" method="post">
+            <DataAnnotationsValidator /> <!-- Validador para las anotaciones de datos -->
+            <ValidationSummary class="text-danger" role="alert" /> <!-- Muestra resumen de errores -->
+            @if (isEmailConfirmed)
+            {
+                <div class="form-floating mb-3 input-group">
+                    <input type="text" value="@email" class="form-control" placeholder="Por favor, introduce tu correo." disabled />
+                    <div class="input-group-append">
+                        <span class="h-100 input-group-text text-success font-weight-bold">✓</span>
+                    </div>
+                    <label for="email" class="form-label">Correo electrónico</label>
+                </div>
+            }
+            else
+            {
+                <div class="form-floating mb-3">
+                    <input type="text" value="@email" class="form-control" placeholder="Por favor, introduce tu correo." disabled />
+                    <label for="email" class="form-label">Correo electrónico</label>
+                    <button type="submit" class="btn btn-link" form="send-verification-form">Enviar correo de verificación</button>
+                </div>
+            }
+
+            <div class="form-floating mb-3">
+                <InputText @bind-Value="Input.NewEmail" class="form-control" autocomplete="email" aria-required="true" placeholder="Por favor, introduce el nuevo correo." />
+                <label for="new-email" class="form-label">Nuevo correo electrónico</label>
+                <ValidationMessage For="() => Input.NewEmail" class="text-danger" />
+            </div>
+
+            <button type="submit" class="w-100 btn btn-lg btn-primary">Cambiar correo electrónico</button>
+        </EditForm>
+    </div>
+</div>
+
+@code {
+    private string? message; // Mensaje de estado para errores o confirmaciones
+    private ApplicationUser user = default!; // Usuario autenticado actual
+    private string? email; // Correo electrónico actual del usuario
+    private bool isEmailConfirmed; // Indica si el correo electrónico está confirmado
+
+    [CascadingParameter]
+    private HttpContext HttpContext { get; set; } = default!; // Contexto HTTP actual
+
+    [SupplyParameterFromForm(FormName = "change-email")]
+    private InputModel Input { get; set; } = new(); // Modelo para enlazar los datos del formulario
+
+    // Inicialización del componente
+    protected override async Task OnInitializedAsync()
+    {
+        user = await UserAccessor.GetRequiredUserAsync(HttpContext); // Obtiene el usuario actual
+        email = await UserManager.GetEmailAsync(user); // Obtiene el correo electrónico actual
+        isEmailConfirmed = await UserManager.IsEmailConfirmedAsync(user); // Verifica si el correo está confirmado
+
+        Input.NewEmail ??= email; // Inicializa el nuevo correo con el actual si no está definido
+    }
+
+    // Acción al enviar el formulario para cambiar el correo electrónico
+    private async Task OnValidSubmitAsync()
+    {
+        if (Input.NewEmail is null || Input.NewEmail == email)
+        {
+            message = "Tu correo electrónico no ha cambiado."; // Mensaje si el correo no cambia
+            return;
+        }
+
+        // Genera un enlace de confirmación para el nuevo correo electrónico
+        var userId = await UserManager.GetUserIdAsync(user);
+        var code = await UserManager.GenerateChangeEmailTokenAsync(user, Input.NewEmail);
+        code = WebEncoders.Base64UrlEncode(Encoding.UTF8.GetBytes(code));
+        var callbackUrl = NavigationManager.GetUriWithQueryParameters(
+            NavigationManager.ToAbsoluteUri("Account/ConfirmEmailChange").AbsoluteUri,
+            new Dictionary<string, object?> { ["userId"] = userId, ["email"] = Input.NewEmail, ["code"] = code });
+
+        await EmailSender.SendConfirmationLinkAsync(user, Input.NewEmail, HtmlEncoder.Default.Encode(callbackUrl));
+
+        message = "Se ha enviado un enlace de confirmación para cambiar tu correo. Por favor, revisa tu bandeja de entrada.";
+    }
+
+    // Acción al enviar el formulario para verificar el correo actual
+    private async Task OnSendEmailVerificationAsync()
+    {
+        if (email is null)
+        {
+            return;
+        }
+
+        // Genera un enlace de confirmación para el correo electrónico actual
+        var userId = await UserManager.GetUserIdAsync(user);
+        var code = await UserManager.GenerateEmailConfirmationTokenAsync(user);
+        code = WebEncoders.Base64UrlEncode(Encoding.UTF8.GetBytes(code));
+        var callbackUrl = NavigationManager.GetUriWithQueryParameters(
+            NavigationManager.ToAbsoluteUri("Account/ConfirmEmail").AbsoluteUri,
+            new Dictionary<string, object?> { ["userId"] = userId, ["code"] = code });
+
+        await EmailSender.SendConfirmationLinkAsync(user, email, HtmlEncoder.Default.Encode(callbackUrl));
+
+        message = "Se ha enviado un correo de verificación. Por favor, revisa tu bandeja de entrada.";
+    }
+
+    // Modelo para los datos del formulario
+    private sealed class InputModel
+    {
+        [Required]
+        [EmailAddress]
+        [Display(Name = "Nuevo correo electrónico")]
+        public string? NewEmail { get; set; } // Nuevo correo electrónico
+    }
+}

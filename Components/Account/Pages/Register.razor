@@ -1,0 +1,187 @@
+﻿@page "/Account/Register"
+
+@using System.ComponentModel.DataAnnotations
+@using System.Text
+@using System.Text.Encodings.Web
+@using Microsoft.AspNetCore.Identity
+@using Microsoft.AspNetCore.WebUtilities
+@using ProductoSaul.Data
+
+@inject UserManager<ApplicationUser> UserManager
+@inject IUserStore<ApplicationUser> UserStore
+@inject SignInManager<ApplicationUser> SignInManager
+@inject IEmailSender<ApplicationUser> EmailSender
+@inject ILogger<Register> Logger
+@inject NavigationManager NavigationManager
+@inject IdentityRedirectManager RedirectManager
+@inject RoleManager<IdentityRole> RoleManager
+
+<PageTitle>Registro</PageTitle>
+
+<h1>Registro</h1>
+
+<div class="row">
+    <div class="col-md-4">
+        <StatusMessage Message="@Message" />
+        <EditForm Model="Input" asp-route-returnUrl="@ReturnUrl" method="post" OnValidSubmit="RegisterUser" FormName="register">
+            <DataAnnotationsValidator />
+            <h2>Crea una nueva cuenta.</h2>
+            <hr />
+            <ValidationSummary class="text-danger" role="alert" />
+            <div class="form-floating mb-3">
+                <InputText @bind-Value="Input.FullName" class="form-control" autocomplete="FullName" aria-required="true" placeholder="Juan Pérez"/>
+            <label for="FullName">Nombre completo del usuario :</label>
+        <ValidationMessage For="() => Input.FullName" class="text-danger" />
+        </div>
+            <div class="form-floating mb-3">
+                <InputText @bind-Value="Input.Email" class="form-control" autocomplete="username" aria-required="true" placeholder="nombre@ejemplo.com" />
+                <label for="email">Correo electrónico</label>
+                <ValidationMessage For="() => Input.Email" class="text-danger" />
+            </div>
+            <div class="form-floating mb-3">
+                <InputText type="password" @bind-Value="Input.Password" class="form-control" autocomplete="new-password" aria-required="true" placeholder="contraseña" />
+                <label for="password">Contraseña</label>
+                <ValidationMessage For="() => Input.Password" class="text-danger" />
+            </div>
+            <div class="form-floating mb-3">
+                <InputText type="password" @bind-Value="Input.ConfirmPassword" class="form-control" autocomplete="new-password" aria-required="true" placeholder="confirmar contraseña" />
+                <label for="confirm-password">Confirmar contraseña</label>
+                <ValidationMessage For="() => Input.ConfirmPassword" class="text-danger" />
+            </div>
+            <div class="form-floating mb-3">
+                <InputSelect @bind-Value="Input.RolSeleccionado" class="form-control" autocomplete="rol" aria-required="true" placeholder="Elige tu rol :">
+                    <option value="Administrador">Administrador</option>
+                <option value="Usuario">Usuario</option>
+                </InputSelect>
+            <label for="rol">Elige tu rol :</label>
+        <ValidationMessage For="() => Input.RolSeleccionado" class="text-danger" />
+        </div>
+            <button type="submit" class="w-100 btn btn-lg btn-primary">Registrar</button>
+        </EditForm>
+    </div>
+    <div class="col-md-6 col-md-offset-2">
+        <section>
+            <h3>Usa otro servicio para registrarte.</h3>
+            <hr />
+            <ExternalLoginPicker />
+        </section>
+    </div>
+</div>
+
+@code {
+    private IEnumerable<IdentityError>? identityErrors; // Errores de validación durante el registro
+
+    [SupplyParameterFromForm]
+    private InputModel Input { get; set; } = new(); // Modelo para enlazar los datos del formulario
+
+    [SupplyParameterFromQuery]
+    private string? ReturnUrl { get; set; } // URL de retorno después del registro
+
+    private string? Message => identityErrors is null ? null : $"Error: {string.Join(", ", identityErrors.Select(error => error.Description))}";
+
+    // Acción para registrar un nuevo usuario
+    public async Task RegisterUser(EditContext editContext)
+    {
+        var user = CreateUser(); // Crea una instancia del usuario
+        // Igualamos el valor de la propiedad nombre completo del usuario  con el valor del control de formulario.
+        user.FullName = Input.FullName;
+        user.RolSeleccionado = Input.RolSeleccionado;
+        await UserStore.SetUserNameAsync(user, Input.Email, CancellationToken.None);
+        var emailStore = GetEmailStore();
+        await emailStore.SetEmailAsync(user, Input.Email, CancellationToken.None);
+        var result = await UserManager.CreateAsync(user, Input.Password); // Crea el usuario con la contraseña proporcionada
+
+        if (!result.Succeeded)
+        {
+            identityErrors = result.Errors;
+            return;
+        }
+//Se busca el rol y se lo agsinamos pero sino lo encuentra lo creamos .        
+        var rolExiste = await RoleManager.RoleExistsAsync(Input.RolSeleccionado);
+        if(!rolExiste)
+        {
+            await RoleManager.CreateAsync(new IdentityRole(Input.RolSeleccionado));
+        }
+        await UserManager.AddToRoleAsync(user, Input.RolSeleccionado);
+        // Si lo encuentra y jugamos si el rol es administrador le mostramos un panel, pero si es usuario lo mandamos a la landing page.
+        if(Input.RolSeleccionado == "Administrador")
+        {
+            NavigationManager.NavigateTo("paneladministracion");
+        }
+        else
+        {
+            NavigationManager.NavigateTo("/");
+        }
+        
+        Logger.LogInformation("El usuario creó una nueva cuenta con contraseña.");
+
+        var userId = await UserManager.GetUserIdAsync(user);
+        var code = await UserManager.GenerateEmailConfirmationTokenAsync(user);
+        code = WebEncoders.Base64UrlEncode(Encoding.UTF8.GetBytes(code));
+        var callbackUrl = NavigationManager.GetUriWithQueryParameters(
+            NavigationManager.ToAbsoluteUri("Account/ConfirmEmail").AbsoluteUri,
+            new Dictionary<string, object?> { ["userId"] = userId, ["code"] = code, ["returnUrl"] = ReturnUrl });
+
+        await EmailSender.SendConfirmationLinkAsync(user, Input.Email, HtmlEncoder.Default.Encode(callbackUrl));
+
+        if (UserManager.Options.SignIn.RequireConfirmedAccount)
+        {
+            RedirectManager.RedirectTo(
+                "Account/RegisterConfirmation",
+                new() { ["email"] = Input.Email, ["returnUrl"] = ReturnUrl });
+        }
+
+        await SignInManager.SignInAsync(user, isPersistent: false); // Inicia sesión automáticamente al usuario
+        RedirectManager.RedirectTo(ReturnUrl); // Redirige al usuario después del registro
+    }
+
+    // Crea una instancia de usuario
+    private ApplicationUser CreateUser()
+    {
+        try
+        {
+            return Activator.CreateInstance<ApplicationUser>();
+        }
+        catch
+        {
+            throw new InvalidOperationException($"No se puede crear una instancia de '{nameof(ApplicationUser)}'. " +
+                $"Asegúrate de que '{nameof(ApplicationUser)}' no sea una clase abstracta y tenga un constructor sin parámetros.");
+        }
+    }
+
+    // Obtiene el almacén de correos electrónicos del usuario
+    private IUserEmailStore<ApplicationUser> GetEmailStore()
+    {
+        if (!UserManager.SupportsUserEmail)
+        {
+            throw new NotSupportedException("El sistema requiere un almacén de usuarios con soporte para correos electrónicos.");
+        }
+        return (IUserEmailStore<ApplicationUser>)UserStore;
+    }
+
+    // Modelo para los datos del formulario
+    private sealed class InputModel
+    {
+        [Required]
+        [EmailAddress]
+        [Display(Name = "Correo electrónico")]
+        public string Email { get; set; } = ""; // Correo electrónico ingresado por el usuario
+
+        [Required]
+        [StringLength(100, ErrorMessage = "La {0} debe tener al menos {2} y un máximo de {1} caracteres.", MinimumLength = 6)]
+        [DataType(DataType.Password)]
+        [Display(Name = "Contraseña")]
+        public string Password { get; set; } = ""; // Contraseña ingresada por el usuario
+
+        [DataType(DataType.Password)]
+        [Display(Name = "Confirmar contraseña")]
+        [Compare("Password", ErrorMessage = "La contraseña y la confirmación no coinciden.")]
+        public string ConfirmPassword { get; set; } = ""; // Confirmación de la contraseña
+        [Required]
+        [StringLength(100, ErrorMessage = "El campo Nombre completo no debe exceder los 100 caracteres.")]
+        public string FullName { get; set; } = "";
+        [Required(ErrorMessage = "Debe seleccionar un rol .")]
+        [Display(Name = "Rol del usuario .")]
+        public string RolSeleccionado { get; set; } = "";    
+    }
+}

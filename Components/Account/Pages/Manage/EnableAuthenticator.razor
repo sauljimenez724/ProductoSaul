@@ -1,0 +1,177 @@
+﻿@page "/Account/Manage/EnableAuthenticator"
+
+@using System.ComponentModel.DataAnnotations
+@using System.Globalization
+@using System.Text
+@using System.Text.Encodings.Web
+@using Microsoft.AspNetCore.Identity
+@using ProductoSaul.Data
+
+@inject UserManager<ApplicationUser> UserManager
+@inject IdentityUserAccessor UserAccessor
+@inject UrlEncoder UrlEncoder
+@inject IdentityRedirectManager RedirectManager
+@inject ILogger<EnableAuthenticator> Logger
+
+<PageTitle>Configurar aplicación autenticadora</PageTitle>
+@if (recoveryCodes is not null)
+{
+    <ShowRecoveryCodes RecoveryCodes="recoveryCodes.ToArray()" StatusMessage="@message" />
+}
+else
+{
+    <StatusMessage Message="@message" />
+    <h3>Configurar aplicación autenticadora</h3> 
+    <div>
+        <p>Para usar una aplicación autenticadora, sigue estos pasos:</p>
+        <ol class="list">
+            <li>
+                <p>
+                    Descarga una aplicación autenticadora como Microsoft Authenticator para
+                    <a href="https://go.microsoft.com/fwlink/?Linkid=825072">Android</a> o
+                    <a href="https://go.microsoft.com/fwlink/?Linkid=825073">iOS</a>, o Google Authenticator para
+                    <a href="https://play.google.com/store/apps/details?id=com.google.android.apps.authenticator2&amp;hl=en">Android</a> y
+                    <a href="https://itunes.apple.com/us/app/google-authenticator/id388497605?mt=8">iOS</a>.
+                </p>
+            </li>
+            <li>
+                <p>Escanea el código QR o ingresa esta clave <kbd>@sharedKey</kbd> en tu aplicación autenticadora. Los espacios y mayúsculas no importan.</p>
+                <div class="alert alert-info">Aprende cómo <a href="https://go.microsoft.com/fwlink/?Linkid=852423">habilitar la generación de códigos QR</a>.</div>
+                <div></div>
+                <div data-url="@authenticatorUri"></div>
+            </li>
+            <li>
+                <p>
+                    Una vez que hayas escaneado el código QR o ingresado la clave anterior, tu aplicación de autenticación generará un código único.
+                    Ingresa el código en el cuadro de confirmación a continuación.
+                </p>
+                <div class="row">
+                    <div class="col-md-6">
+                        <EditForm Model="Input" FormName="send-code" OnValidSubmit="OnValidSubmitAsync" method="post">
+                            <DataAnnotationsValidator />
+                            <div class="form-floating mb-3">
+                                <InputText @bind-Value="Input.Code" class="form-control" autocomplete="off" placeholder="Por favor, ingresa el código." />
+                                <label for="code" class="control-label form-label">Código de verificación</label>
+                                <ValidationMessage For="() => Input.Code" class="text-danger" />
+                            </div>
+                            <button type="submit" class="w-100 btn btn-lg btn-primary">Verificar</button>
+                            <ValidationSummary class="text-danger" role="alert" />
+                        </EditForm>
+                    </div>
+                </div>
+            </li>
+        </ol>
+    </div>
+}
+
+@code {
+    private const string AuthenticatorUriFormat = "otpauth://totp/{0}:{1}?secret={2}&issuer={0}&digits=6";
+
+    private string? message; // Mensaje de estado para errores o confirmaciones
+    private ApplicationUser user = default!; // Usuario autenticado actual
+    private string? sharedKey; // Clave compartida para configurar la aplicación autenticadora
+    private string? authenticatorUri; // URI del código QR generado
+    private IEnumerable<string>? recoveryCodes; // Códigos de recuperación generados
+
+    [CascadingParameter]
+    private HttpContext HttpContext { get; set; } = default!; // Contexto HTTP actual
+
+    [SupplyParameterFromForm]
+    private InputModel Input { get; set; } = new(); // Modelo para enlazar los datos del formulario
+
+    // Inicialización del componente
+    protected override async Task OnInitializedAsync()
+    {
+        user = await UserAccessor.GetRequiredUserAsync(HttpContext); // Obtiene el usuario actual
+        await LoadSharedKeyAndQrCodeUriAsync(user); // Carga la clave compartida y la URI del código QR
+    }
+
+    // Acción al enviar el formulario para verificar el código
+    private async Task OnValidSubmitAsync()
+    {
+        // Elimina espacios y guiones del código ingresado
+        var verificationCode = Input.Code.Replace(" ", string.Empty).Replace("-", string.Empty);
+
+        // Verifica el código de autenticación
+        var is2faTokenValid = await UserManager.VerifyTwoFactorTokenAsync(
+            user, UserManager.Options.Tokens.AuthenticatorTokenProvider, verificationCode);
+
+        if (!is2faTokenValid)
+        {
+            message = "Error: El código de verificación no es válido.";
+            return;
+        }
+
+        // Habilita la autenticación de dos factores
+        await UserManager.SetTwoFactorEnabledAsync(user, true);
+        var userId = await UserManager.GetUserIdAsync(user);
+        Logger.LogInformation("El usuario con ID '{UserId}' habilitó 2FA con una aplicación autenticadora.", userId);
+
+        message = "Tu aplicación autenticadora ha sido verificada.";
+
+        // Genera códigos de recuperación si no existen
+        if (await UserManager.CountRecoveryCodesAsync(user) == 0)
+        {
+            recoveryCodes = await UserManager.GenerateNewTwoFactorRecoveryCodesAsync(user, 10);
+        }
+        else
+        {
+            RedirectManager.RedirectToWithStatus("Account/Manage/TwoFactorAuthentication", message, HttpContext);
+        }
+    }
+
+    // Carga la clave compartida y la URI del código QR
+    private async ValueTask LoadSharedKeyAndQrCodeUriAsync(ApplicationUser user)
+    {
+        var unformattedKey = await UserManager.GetAuthenticatorKeyAsync(user);
+        if (string.IsNullOrEmpty(unformattedKey))
+        {
+            await UserManager.ResetAuthenticatorKeyAsync(user);
+            unformattedKey = await UserManager.GetAuthenticatorKeyAsync(user);
+        }
+
+        sharedKey = FormatKey(unformattedKey!);
+
+        var email = await UserManager.GetEmailAsync(user);
+        authenticatorUri = GenerateQrCodeUri(email!, unformattedKey!);
+    }
+
+    // Da formato a la clave compartida
+    private string FormatKey(string unformattedKey)
+    {
+        var result = new StringBuilder();
+        int currentPosition = 0;
+        while (currentPosition + 4 < unformattedKey.Length)
+        {
+            result.Append(unformattedKey.AsSpan(currentPosition, 4)).Append(' ');
+            currentPosition += 4;
+        }
+        if (currentPosition < unformattedKey.Length)
+        {
+            result.Append(unformattedKey.AsSpan(currentPosition));
+        }
+
+        return result.ToString().ToLowerInvariant();
+    }
+
+    // Genera la URI del código QR
+    private string GenerateQrCodeUri(string email, string unformattedKey)
+    {
+        return string.Format(
+            CultureInfo.InvariantCulture,
+            AuthenticatorUriFormat,
+            UrlEncoder.Encode("Microsoft.AspNetCore.Identity.UI"),
+            UrlEncoder.Encode(email),
+            unformattedKey);
+    }
+
+    // Modelo para los datos del formulario
+    private sealed class InputModel
+    {
+        [Required]
+        [StringLength(7, ErrorMessage = "El {0} debe tener al menos {2} y un máximo de {1} caracteres.", MinimumLength = 6)]
+        [DataType(DataType.Text)]
+        [Display(Name = "Código de verificación")]
+        public string Code { get; set; } = ""; // Código de verificación ingresado por el usuario
+    }
+}

@@ -1,0 +1,29 @@
+﻿@inherits LayoutComponentBase
+@layout ProductoSaul.Components.Layout.MainLayout
+@inject NavigationManager NavigationManager
+
+@if (HttpContext is null)
+{
+    <p>Cargando...</p>
+}
+else
+{
+    @Body
+}
+
+@code {
+    [CascadingParameter]
+    private HttpContext? HttpContext { get; set; } // Contexto HTTP proporcionado por la aplicación
+
+    // Método que se ejecuta cuando los parámetros del componente son establecidos
+    protected override void OnParametersSet()
+    {
+        if (HttpContext is null)
+        {
+            // Si el código se ejecuta en modo interactivo, no hay un HttpContext disponible.
+            // Las páginas de identidad requieren un HttpContext para establecer cookies, por lo que
+            // se necesita una transición al modo renderizado en el servidor.
+            NavigationManager.Refresh(forceReload: true);
+        }
+    }
+}

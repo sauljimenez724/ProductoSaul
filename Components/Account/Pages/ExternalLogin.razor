@@ -1,0 +1,201 @@
+﻿@page "/Account/ExternalLogin"
+
+@using System.ComponentModel.DataAnnotations
+@using System.Security.Claims
+@using System.Text
+@using System.Text.Encodings.Web
+@using Microsoft.AspNetCore.Identity
+@using Microsoft.AspNetCore.WebUtilities
+@using ProductoSaul.Data
+
+@inject SignInManager<ApplicationUser> SignInManager
+@inject UserManager<ApplicationUser> UserManager
+@inject IUserStore<ApplicationUser> UserStore
+@inject IEmailSender<ApplicationUser> EmailSender
+@inject NavigationManager NavigationManager
+@inject IdentityRedirectManager RedirectManager
+@inject ILogger<ExternalLogin> Logger
+
+
+<PageTitle>Registrar</PageTitle> 
+<StatusMessage Message="@message" /> 
+<h1>Registrar</h1> 
+<h2>Asocia tu cuenta de @ProviderDisplayName.</h2> 
+<hr />
+
+<div class="alert alert-info">
+    Te has autenticado exitosamente con <strong>@ProviderDisplayName</strong>.
+    Por favor, ingresa una dirección de correo electrónico para este sitio y haz clic en el botón Registrar para completar el inicio de sesión.
+</div>
+
+<div class="row">
+    <div class="col-md-4">
+        <EditForm Model="Input" OnValidSubmit="OnValidSubmitAsync" FormName="confirmation" method="post">
+            <DataAnnotationsValidator />
+            <ValidationSummary class="text-danger" role="alert" />
+            <div class="form-floating mb-3">
+                <InputText @bind-Value="Input.Email" class="form-control" autocomplete="email" placeholder="Por favor, introduce tu correo electrónico." />
+                <label for="email" class="form-label">Correo electrónico</label>
+                <ValidationMessage For="() => Input.Email" />
+            </div>
+            <button type="submit" class="w-100 btn btn-lg btn-primary">Registrar</button>
+        </EditForm>
+    </div>
+</div>
+
+@code {
+    public const string LoginCallbackAction = "LoginCallback"; // Acción para el callback de inicio de sesión
+
+    private string? message; // Mensaje de estado para errores o confirmaciones
+    private ExternalLoginInfo externalLoginInfo = default!; // Información del inicio de sesión externo
+
+    [CascadingParameter]
+    private HttpContext HttpContext { get; set; } = default!; // Contexto HTTP actual
+
+    [SupplyParameterFromForm]
+    private InputModel Input { get; set; } = new(); // Modelo para enlazar los datos del formulario
+
+    [SupplyParameterFromQuery]
+    private string? RemoteError { get; set; } // Error remoto proporcionado en la consulta
+
+    [SupplyParameterFromQuery]
+    private string? ReturnUrl { get; set; } // URL de retorno después del inicio de sesión
+
+    [SupplyParameterFromQuery]
+    private string? Action { get; set; } // Acción proporcionada en la consulta
+
+    private string? ProviderDisplayName => externalLoginInfo.ProviderDisplayName; // Nombre del proveedor del inicio de sesión externo
+
+    // Inicialización del componente
+    protected override async Task OnInitializedAsync()
+    {
+        if (RemoteError is not null)
+        {
+            // Redirige al inicio de sesión con un mensaje de error si hay errores remotos
+            RedirectManager.RedirectToWithStatus("Account/Login", $"Error del proveedor externo: {RemoteError}", HttpContext);
+        }
+
+        var info = await SignInManager.GetExternalLoginInfoAsync(); // Obtiene la información del inicio de sesión externo
+        if (info is null)
+        {
+            RedirectManager.RedirectToWithStatus("Account/Login", "Error al cargar la información del inicio de sesión externo.", HttpContext);
+        }
+
+        externalLoginInfo = info;
+
+        if (HttpMethods.IsGet(HttpContext.Request.Method))
+        {
+            if (Action == LoginCallbackAction)
+            {
+                await OnLoginCallbackAsync();
+                return;
+            }
+
+            // Redirige al inicio de sesión si se accede a esta página de manera no esperada
+            RedirectManager.RedirectTo("Account/Login");
+        }
+    }
+
+    // Acción al completar el callback del inicio de sesión
+    private async Task OnLoginCallbackAsync()
+    {
+        // Intenta iniciar sesión si el usuario ya tiene una cuenta vinculada
+        var result = await SignInManager.ExternalLoginSignInAsync(
+            externalLoginInfo.LoginProvider,
+            externalLoginInfo.ProviderKey,
+            isPersistent: false,
+            bypassTwoFactor: true);
+
+        if (result.Succeeded)
+        {
+            Logger.LogInformation(
+                "{Name} inició sesión con el proveedor {LoginProvider}.",
+                externalLoginInfo.Principal.Identity?.Name,
+                externalLoginInfo.LoginProvider);
+            RedirectManager.RedirectTo(ReturnUrl);
+        }
+        else if (result.IsLockedOut)
+        {
+            RedirectManager.RedirectTo("Account/Lockout");
+        }
+
+        // Si el usuario no tiene cuenta, solicita que la cree
+        if (externalLoginInfo.Principal.HasClaim(c => c.Type == ClaimTypes.Email))
+        {
+            Input.Email = externalLoginInfo.Principal.FindFirstValue(ClaimTypes.Email) ?? "";
+        }
+    }
+
+    // Acción al enviar el formulario para registrar la cuenta
+    private async Task OnValidSubmitAsync()
+    {
+        var emailStore = GetEmailStore();
+        var user = CreateUser();
+
+        await UserStore.SetUserNameAsync(user, Input.Email, CancellationToken.None); // Establece el nombre de usuario
+        await emailStore.SetEmailAsync(user, Input.Email, CancellationToken.None); // Establece el correo electrónico
+
+        var result = await UserManager.CreateAsync(user); // Crea la cuenta del usuario
+        if (result.Succeeded)
+        {
+            result = await UserManager.AddLoginAsync(user, externalLoginInfo); // Vincula el inicio de sesión externo
+            if (result.Succeeded)
+            {
+                Logger.LogInformation("El usuario creó una cuenta usando el proveedor {Name}.", externalLoginInfo.LoginProvider);
+
+                var userId = await UserManager.GetUserIdAsync(user);
+                var code = await UserManager.GenerateEmailConfirmationTokenAsync(user);
+                code = WebEncoders.Base64UrlEncode(Encoding.UTF8.GetBytes(code));
+
+                var callbackUrl = NavigationManager.GetUriWithQueryParameters(
+                    NavigationManager.ToAbsoluteUri("Account/ConfirmEmail").AbsoluteUri,
+                    new Dictionary<string, object?> { ["userId"] = userId, ["code"] = code });
+                await EmailSender.SendConfirmationLinkAsync(user, Input.Email, HtmlEncoder.Default.Encode(callbackUrl));
+
+                // Redirige a la confirmación de registro si se requiere confirmar la cuenta
+                if (UserManager.Options.SignIn.RequireConfirmedAccount)
+                {
+                    RedirectManager.RedirectTo("Account/RegisterConfirmation", new() { ["email"] = Input.Email });
+                }
+
+                await SignInManager.SignInAsync(user, isPersistent: false, externalLoginInfo.LoginProvider); // Inicia sesión al usuario
+                RedirectManager.RedirectTo(ReturnUrl);
+            }
+        }
+
+        // Muestra un mensaje de error si el registro falla
+        message = $"Error: {string.Join(",", result.Errors.Select(error => error.Description))}";
+    }
+
+    // Crea una instancia del usuario
+    private ApplicationUser CreateUser()
+    {
+        try
+        {
+            return Activator.CreateInstance<ApplicationUser>();
+        }
+        catch
+        {
+            throw new InvalidOperationException($"No se puede crear una instancia de '{nameof(ApplicationUser)}'. " +
+                $"Asegúrate de que '{nameof(ApplicationUser)}' no sea una clase abstracta y tenga un constructor sin parámetros.");
+        }
+    }
+
+    // Obtiene el almacén de correos electrónicos del usuario
+    private IUserEmailStore<ApplicationUser> GetEmailStore()
+    {
+        if (!UserManager.SupportsUserEmail)
+        {
+            throw new NotSupportedException("El sistema requiere un almacén de usuarios con soporte para correos electrónicos.");
+        }
+        return (IUserEmailStore<ApplicationUser>)UserStore;
+    }
+
+    // Modelo para los datos del formulario
+    private sealed class InputModel
+    {
+        [Required]
+        [EmailAddress]
+        public string Email { get; set; } = ""; // Dirección de correo electrónico proporcionada por el usuario
+    }
+}

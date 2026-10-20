@@ -1,0 +1,71 @@
+﻿@page "/Account/Manage/GenerateRecoveryCodes"
+
+@using Microsoft.AspNetCore.Identity
+@using ProductoSaul.Data
+
+@inject UserManager<ApplicationUser> UserManager
+@inject IdentityUserAccessor UserAccessor
+@inject IdentityRedirectManager RedirectManager
+@inject ILogger<GenerateRecoveryCodes> Logger
+
+<PageTitle>Generar códigos de recuperación para 2FA</PageTitle> 
+@if (recoveryCodes is not null)
+{
+    <ShowRecoveryCodes RecoveryCodes="recoveryCodes.ToArray()" StatusMessage="@message" />
+}
+else
+{
+    <h3>Generar códigos de recuperación para 2FA</h3>
+    <div class="alert alert-warning" role="alert">
+        <p>
+            <span class="glyphicon glyphicon-warning-sign"></span>
+            <strong>Guarda estos códigos en un lugar seguro.</strong>
+        </p>
+        <p>
+            Si pierdes tu dispositivo y no tienes los códigos de recuperación, perderás acceso a tu cuenta.
+        </p>
+        <p>
+            Generar nuevos códigos de recuperación no cambia las claves usadas en las aplicaciones autenticadoras.
+            Si deseas cambiar la clave usada en una aplicación autenticadora, debes
+            <a href="Account/Manage/ResetAuthenticator">restablecer tus claves de autenticación.</a>
+        </p>
+    </div>
+    <div>
+        <form @formname="generate-recovery-codes" @onsubmit="OnSubmitAsync" method="post">
+            <AntiforgeryToken /> <!-- Protección contra ataques CSRF -->
+            <button class="btn btn-danger" type="submit">Generar códigos de recuperación</button>
+        </form>
+    </div>
+}
+
+@code {
+    private string? message; // Mensaje de estado para errores o confirmaciones
+    private ApplicationUser user = default!; // Usuario autenticado actual
+    private IEnumerable<string>? recoveryCodes; // Códigos de recuperación generados
+
+    [CascadingParameter]
+    private HttpContext HttpContext { get; set; } = default!; // Contexto HTTP actual
+
+    // Inicialización del componente
+    protected override async Task OnInitializedAsync()
+    {
+        user = await UserAccessor.GetRequiredUserAsync(HttpContext); // Obtiene el usuario autenticado actual
+
+        // Verifica si el usuario tiene habilitada la autenticación de dos factores
+        var isTwoFactorEnabled = await UserManager.GetTwoFactorEnabledAsync(user);
+        if (!isTwoFactorEnabled)
+        {
+            throw new InvalidOperationException("No se pueden generar códigos de recuperación porque el usuario no tiene habilitada la autenticación de dos factores (2FA).");
+        }
+    }
+
+    // Acción al enviar el formulario para generar códigos de recuperación
+    private async Task OnSubmitAsync()
+    {
+        var userId = await UserManager.GetUserIdAsync(user); // Obtiene el ID del usuario
+        recoveryCodes = await UserManager.GenerateNewTwoFactorRecoveryCodesAsync(user, 10); // Genera 10 nuevos códigos de recuperación
+        message = "Has generado nuevos códigos de recuperación."; // Mensaje de confirmación
+
+        Logger.LogInformation("El usuario con ID '{UserId}' ha generado nuevos códigos de recuperación para 2FA.", userId); // Registra el evento en los logs
+    }
+}

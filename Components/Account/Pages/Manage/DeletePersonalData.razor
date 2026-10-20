@@ -1,0 +1,93 @@
+﻿@page "/Account/Manage/DeletePersonalData"
+
+@using System.ComponentModel.DataAnnotations
+@using Microsoft.AspNetCore.Identity
+@using ProductoSaul.Data
+
+@inject UserManager<ApplicationUser> UserManager
+@inject SignInManager<ApplicationUser> SignInManager
+@inject IdentityUserAccessor UserAccessor
+@inject IdentityRedirectManager RedirectManager
+@inject ILogger<DeletePersonalData> Logger
+
+<PageTitle>Eliminar Datos Personales</PageTitle> 
+
+<StatusMessage Message="@message" />
+<h3>Eliminar Datos Personales</h3> 
+<div class="alert alert-warning" role="alert">
+    <p>
+        <strong>Eliminar estos datos eliminará permanentemente tu cuenta, y no se podrá recuperar.</strong>
+    </p>
+</div>
+
+<div>
+    <EditForm Model="Input" FormName="delete-user" OnValidSubmit="OnValidSubmitAsync" method="post">
+        <DataAnnotationsValidator /> <!-- Validador para las anotaciones de datos -->
+        <ValidationSummary class="text-danger" role="alert" /> <!-- Muestra resumen de errores -->
+        @if (requirePassword)
+        {
+            <div class="form-floating mb-3">
+                <InputText type="password" @bind-Value="Input.Password" class="form-control" autocomplete="current-password" aria-required="true" placeholder="Por favor, ingresa tu contraseña." />
+                <label for="password" class="form-label">Contraseña</label>
+                <ValidationMessage For="() => Input.Password" class="text-danger" />
+            </div>
+        }
+
+        <button class="w-100 btn btn-lg btn-danger" type="submit">Eliminar datos y cerrar mi cuenta</button>
+    </EditForm>
+</div>
+
+@code {
+    private string? message; // Mensaje de estado para mostrar errores o confirmaciones
+    private ApplicationUser user = default!; // Usuario autenticado actual
+    private bool requirePassword; // Indica si se requiere contraseña para eliminar la cuenta
+
+    [CascadingParameter]
+    private HttpContext HttpContext { get; set; } = default!; // Contexto HTTP actual
+
+    [SupplyParameterFromForm]
+    private InputModel Input { get; set; } = new(); // Modelo para enlazar los datos del formulario
+
+    // Inicialización del componente
+    protected override async Task OnInitializedAsync()
+    {
+        Input ??= new(); // Inicializa el modelo del formulario si es nulo
+        user = await UserAccessor.GetRequiredUserAsync(HttpContext); // Obtiene el usuario actual
+        requirePassword = await UserManager.HasPasswordAsync(user); // Verifica si se requiere contraseña
+    }
+
+    // Acción al enviar el formulario
+    private async Task OnValidSubmitAsync()
+    {
+        // Verifica si la contraseña es requerida y válida
+        if (requirePassword && !await UserManager.CheckPasswordAsync(user, Input.Password))
+        {
+            message = "Error: Contraseña incorrecta."; // Mensaje de error si la contraseña no coincide
+            return;
+        }
+
+        // Intenta eliminar al usuario
+        var result = await UserManager.DeleteAsync(user);
+        if (!result.Succeeded)
+        {
+            throw new InvalidOperationException("Ocurrió un error inesperado al eliminar el usuario.");
+        }
+
+        // Cierra la sesión del usuario eliminado
+        await SignInManager.SignOutAsync();
+
+        // Registra el evento de eliminación en los logs
+        var userId = await UserManager.GetUserIdAsync(user);
+        Logger.LogInformation("El usuario con ID '{UserId}' se eliminó a sí mismo.", userId);
+
+        // Redirige a la página actual (puedes modificar esto según la necesidad)
+        RedirectManager.RedirectToCurrentPage();
+    }
+
+    // Modelo para los datos del formulario
+    private sealed class InputModel
+    {
+        [DataType(DataType.Password)]
+        public string Password { get; set; } = ""; // Contraseña para confirmar la eliminación
+    }
+}

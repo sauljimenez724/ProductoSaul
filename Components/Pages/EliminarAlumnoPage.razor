@@ -1,0 +1,59 @@
+﻿@page "/persona/eliminar/{idAlumno:int}"
+@rendermode InteractiveServer
+@inject IPersonaServices getPersonaService
+@inject NavigationManager navigation
+<PageTitle>Eliminar el alumno @getPersona.Nombre</PageTitle>
+<div class="container">
+    <h1>
+        Eliminar el alumno @getPersona.Nombre
+    </h1>
+    <div class="text-center">
+        <p>
+        ¿Estas seguro de eliminar el alumno @getPersona.Nombre?
+        </p>
+        <div class="mt-3">
+            <button class="btn btn-danger" @onclick="EliminarPersonaAsync">Eliminar</button>
+            <button class="btn btn-secondary" @onclick="Salir">Cancelar</button>
+        </div>
+    </div>
+</div>
+@if (!string.IsNullOrEmpty(mensaje))
+{
+    <div class="alert alert-success shadow p-3 mb-5 mt-3 rounded row">
+        <p role="alert">@mensaje</p>
+    </div>
+}
+
+@code {
+    [Parameter]
+    public int idAlumno{ get; set; }
+    PersonaEntity getPersona = new();
+    string mensaje = string.Empty;
+    protected override async Task OnParametersSetAsync()
+    {
+        var resultadoPersona = await getPersonaService.PersonaPorIdAsycn(idAlumno);
+        if(resultadoPersona != null)
+        {
+            getPersona = resultadoPersona;
+        }
+    }
+
+    private async Task EliminarPersonaAsync()
+    {
+        if(getPersona.AlumnoId > 0)
+        {
+            mensaje = "¡Su eliminación de su registro ha sido exitoso.Lo lamentamos mucho vuelva ha registrarse de nuevo.!";
+            StateHasChanged();
+            await Task.Delay(1000);
+
+            await getPersonaService.EliminarPersonaAsync(idAlumno);
+            navigation.NavigateTo("paneladministracion");
+        }
+    }
+    
+    private void Salir()
+    {
+        navigation.NavigateTo("paneladministracion");
+    }
+
+}

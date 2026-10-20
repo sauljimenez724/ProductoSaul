@@ -1,0 +1,71 @@
+﻿@page "/comentario/nuevo"
+@rendermode InteractiveServer
+@inject IPersonaServices getPersonaService
+@inject IComentarioServices getComentarioService
+@inject NavigationManager navigation
+
+<PageTitle>Nuevo comentario</PageTitle>
+
+<h1>
+    Nuevo comentario
+    </h1>
+
+<div class="container">
+    <EditForm Model="getComentarioEntity" OnValidSubmit="AgregarComentarioAsync" @formname="formComentairo">
+        <div class="row mb-3">
+            <label class="col-sm-12 col-md-3 col-form-label" for="texto">
+                Escribe tu comentario o testimonio:
+            </label>
+            <div class="col-sm-3 col-md-9">
+            <InputText class="form-control" id="texto" @bind-Value="getComentarioEntity.Texto" />
+        <ValidationMessage For="@(() => getComentarioEntity.Texto)"/>    
+        </div>
+        </div>
+
+        <div class="mt-5">
+        <button class="btn btn-success ms-5" type="submit">Agregar</button>
+    <button class="btn btn-info ms-5" @onclick="Salir">Regresar</button>    
+    </div>
+        
+        <DataAnnotationsValidator />
+        <ValidationSummary />
+    </EditForm>
+</div>
+
+@code {
+    List<PersonaEntity> getPersonas = new();
+    ComentarioEntity getComentarioEntity = new();
+    int personaSeleccionadaId;
+
+    protected override async Task OnInitializedAsync()
+    {
+        getPersonas = await getPersonaService.ListaPersonaAsync();
+        if (getPersonas.Any())
+        {
+            personaSeleccionadaId = getPersonas.First().AlumnoId;
+        }
+    }
+
+    private async Task AgregarComentarioAsync()
+    {
+        var personaSeleccionada = getPersonas.FirstOrDefault(p => p.AlumnoId == personaSeleccionadaId);
+        if (personaSeleccionada != null)
+        {
+            getComentarioEntity.Persona = new PersonaEntity
+            {
+                Nombre = personaSeleccionada.Nombre,
+                Apellidos = personaSeleccionada.Apellidos
+            };
+            getComentarioEntity.Fecha = DateTime.Now;
+
+            await getComentarioService.CrearComentarioAsyncn(getComentarioEntity);            
+            navigation.NavigateTo("comentarios");
+        }
+    }
+
+    private void Salir()
+    {
+        navigation.NavigateTo("comentarios");
+    }
+
+}

@@ -1,0 +1,35 @@
+﻿@page "/persona/alta"
+@rendermode InteractiveServer
+@inject IPersonaServices getPersonasService
+@inject NavigationManager navigation
+<PageTitle>Nuevo aluno</PageTitle>
+<div class="container" style="padding: 20px; border-radius: 10px;">
+    <h1 class="my-5"
+        style="text-align: center; margin: 20px; background-color: black; color: wheat; font-family: 'Lucida Sans', 'Lucida Sans Regular', 'Lucida Grande', 'Lucida Sans Unicode', Geneva, Verdana, sans-serif; font-size: 32px;">
+Nuevo alummno
+    </h1>
+<FormularioPersonaComponent Metodo="GuardarPersonaAsync" objetoPersona="getPersona" />
+</div>
+@if (!string.IsNullOrEmpty(mensaje))
+{
+    <div class="alert alert-success shadow p-3 mb-5 mt-3 rounded row">
+        <p role="alert">@mensaje</p>
+    </div>
+}
+
+@code{
+    PersonaEntity getPersona = new();
+    string mensaje = string.Empty;
+
+
+    private async Task GuardarPersonaAsync()
+    {
+        mensaje = "        ¡Su registro ha sido realizado con éxito, ahora puede disfrutar de este curso!";
+        StateHasChanged();
+        await Task.Delay(3000);
+        
+        await getPersonasService.CrearPersonaAsyncn(getPersona);
+        navigation.NavigateTo("/");
+    }
+
+}

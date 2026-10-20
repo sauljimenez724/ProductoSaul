@@ -1,0 +1,129 @@
+﻿@page "/producto"
+@rendermode InteractiveServer
+@inject IPersonaServices getPersonaService
+@attribute [StreamRendering]
+
+<PageTitle>Curso Básico de HTML – Aprende a crear páginas web desde cero</PageTitle>
+<h1>Curso Básico de HTML – Aprende a crear páginas web desde cero</h1>
+<Carrusel/>
+<div class="row">
+    <div class="col-sm-12 col-md-2 text-dark mb-2">
+<div class="accordion" id="acordionEjemplo">
+    <div class="accordion-item">
+        <h1 class="accordion-header">
+            <button class="accordion-button" type="button" data-bs-toggle="collapse" data-bs-target="#collapseUno" aria-expanded="true" aria-controls="collapseUno">
+                Descripción breve
+            </button>
+        </h1>
+    <div id="collapseUno" class="accordion-collapse collapse show" data-bs-parent="#acordionEjemplo">
+        <div class="accordion-body">
+                <p>Aprende los fundamentos del desarrollo web con nuestro curso de HTML básico. Ideal para principiantes que desean empezar en el mundo de la programación y diseño de páginas web.</p>
+        </div>
+    </div>
+    </div>
+<div class="accordion-item">
+    <h2 class="accordion-header">
+            <button class="accordion-button" type="button" data-bs-toggle="collapse" data-bs-target="#collapseDos" aria-expanded="false" aria-controls="collapseDos">
+                Temario del curso (contenido que incluye)
+        </button>
+    </h2>
+<div id="collapseDos" class="accordion-collapse collapse">
+    <div class="accordion-body">
+        <ol type="I">
+                    <li>Introducción al desarrollo web</li>
+                    <li>Conceptos básicos de HTML</li>
+                    <li>Estructura de una página web</li>
+                    <li>Etiquetas y atributos más usados</li>
+                    <li>Listas, tablas y enlaces</li>
+                    <li>Imágenes y multimedia</li>
+                    <li>Formularios básicos</li>
+                    <li>Buenas prácticas en HTML</li>
+                    <li>Proyecto final (tu primera página web)</li>
+                </ol>
+    </div>
+</div>
+</div>
+<div class="accordion-item">
+    <h3 class="accordion-header">
+            <button clss="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#collapseTres" aria-expanded="false" aria-controls="collapseTres">
+                Objetivo
+        </button>
+    </h3>
+        <div id="collapseTres" class="accordion-collapse collapse" data-bs-parent="#accordionEjemplo">
+            <div class="accordion-body">
+                <p>
+                    Este curso les puede servir a estudiantes sin experiencia en programación, por la cual puedes ser un gran emprendedor que quiere crear su propia página web, por eso hay personas que buscan iniciar en el desarrollo web .
+                </p>
+            </div>
+</div>
+</div>
+    <div class="accordion-item">
+        <h4 class="accordion-header">
+            <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#collapseCuatro" aria-expanded="false" aria-controls="collapseCuatro">
+                Fechas y precio del curso
+            </button>
+        </h4>
+        <div id="collapseCuatro" class="accordion-collapse collapse" data-bs-parent="#accordionEjemplo">
+            <div class="accordion-body">
+                <p>
+                    Precio:$1,200 MXN (incluye materiales y certificado digital)
+                </p>
+                <ol type="1">
+                <li>Inicio del curso: 05 de septiembre 2025</li>
+                <li>Finalización: 30 de septiembre 2025</li>
+                <li>Cierre de inscripciones: 01 de septiembre 2025</li>
+                </ol>
+            </div>
+</div>
+</div>
+    <div class="accordion-item">
+        <h5 class="accordion-header">
+            <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#collapseCinco" aria-expanded="false" aria-controls="collapseCinco">
+                ¡Inscríbete ahora y asegura tu lugar!
+                </button>
+        </h5>
+        <div id="collapseCinco" class="accordion-collapse collapse" data-bs-parent="#accordionEjemplo">
+            <div class="accordion-body">
+                <p>
+                    Si quieres ser uno de los primeros estudiantes  inscríbete ahora dando al enlace de registro  y tendrás un descuento del 20% en tu primera inscripción .
+                </p>
+                <a href="persona/alta">Registrate</a>
+@foreach(var mPersona in getPersonaEntities)
+                {
+                    <p>
+                        Pero si en algún momento quieres modificar algunos de tus datos como el correo o tu número puedes ir al enlace de editar .
+                    </p>
+                    <a href="persona/editar/@mPersona.AlumnoId">Editar</a>
+                }            
+            </div>
+</div>
+</div>
+    <div class="accordion-item">
+        <h6 class="accordion-header">
+            <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#collapseSeis" aria-expanded="false" aria-controls="collapseSeis">
+            Comentarios
+            </button>
+        </h6>
+        <div id="collapseSeis" class="accordion-collapse collapse" data-bs-parent="#accordionEjemplo">
+            <div class="accordion-body">
+<ListaComentario/>
+</div>
+</div>
+</div>
+</div>
+    </div>
+</div>
+
+@code{
+    List<PersonaEntity> getPersonaEntities = new();
+
+    protected override async Task OnInitializedAsync()
+    {
+        var resultadoPersona = await getPersonaService.ListaPersonaAsync();
+        if(resultadoPersona != null)
+        {
+            getPersonaEntities = resultadoPersona;
+        }
+    }
+
+}

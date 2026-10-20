@@ -1,0 +1,90 @@
+﻿@page "/Account/LoginWithRecoveryCode"
+
+@using System.ComponentModel.DataAnnotations
+@using Microsoft.AspNetCore.Identity
+@using ProductoSaul.Data
+
+@inject SignInManager<ApplicationUser> SignInManager
+@inject UserManager<ApplicationUser> UserManager
+@inject IdentityRedirectManager RedirectManager
+@inject ILogger<LoginWithRecoveryCode> Logger
+
+
+<PageTitle>Verificación con código de recuperación</PageTitle>
+
+<h1>Verificación con código de recuperación</h1>
+<hr />
+<StatusMessage Message="@message" />
+<p>
+    Has solicitado iniciar sesión con un código de recuperación. Este inicio de sesión no será recordado
+    hasta que proporciones un código de una aplicación autenticadora en un próximo inicio de sesión o deshabilites la 2FA y vuelvas a iniciar sesión.
+</p>
+<div class="row">
+    <div class="col-md-4">
+        <EditForm Model="Input" FormName="login-with-recovery-code" OnValidSubmit="OnValidSubmitAsync" method="post">
+            <DataAnnotationsValidator />
+            <ValidationSummary class="text-danger" role="alert" />
+            <div class="form-floating mb-3">
+                <InputText @bind-Value="Input.RecoveryCode" class="form-control" autocomplete="off" placeholder="Código de recuperación" />
+                <label for="recovery-code" class="form-label">Código de recuperación</label>
+                <ValidationMessage For="() => Input.RecoveryCode" class="text-danger" />
+            </div>
+            <button type="submit" class="w-100 btn btn-lg btn-primary">Iniciar sesión</button>
+        </EditForm>
+    </div>
+</div>
+
+@code {
+    private string? message; // Mensaje de estado para errores o confirmaciones
+    private ApplicationUser user = default!; // Usuario autenticado actual
+
+    [SupplyParameterFromForm]
+    private InputModel Input { get; set; } = new(); // Modelo para enlazar los datos del formulario
+
+    [SupplyParameterFromQuery]
+    private string? ReturnUrl { get; set; } // URL de retorno después del inicio de sesión
+
+    // Inicialización del componente
+    protected override async Task OnInitializedAsync()
+    {
+        // Asegura que el usuario haya pasado por la pantalla de nombre de usuario y contraseña
+        user = await SignInManager.GetTwoFactorAuthenticationUserAsync() ??
+            throw new InvalidOperationException("No se pudo cargar el usuario de autenticación de dos factores.");
+    }
+
+    // Acción al enviar el formulario con el código de recuperación
+    private async Task OnValidSubmitAsync()
+    {
+        // Limpia el código de recuperación de espacios
+        var recoveryCode = Input.RecoveryCode.Replace(" ", string.Empty);
+
+        var result = await SignInManager.TwoFactorRecoveryCodeSignInAsync(recoveryCode);
+
+        var userId = await UserManager.GetUserIdAsync(user);
+
+        if (result.Succeeded)
+        {
+            Logger.LogInformation("El usuario con ID '{UserId}' inició sesión con un código de recuperación.", userId);
+            RedirectManager.RedirectTo(ReturnUrl);
+        }
+        else if (result.IsLockedOut)
+        {
+            Logger.LogWarning("La cuenta del usuario está bloqueada.");
+            RedirectManager.RedirectTo("Account/Lockout");
+        }
+        else
+        {
+            Logger.LogWarning("Se ingresó un código de recuperación no válido para el usuario con ID '{UserId}'.", userId);
+            message = "Error: Código de recuperación no válido.";
+        }
+    }
+
+    // Modelo para los datos del formulario
+    private sealed class InputModel
+    {
+        [Required]
+        [DataType(DataType.Text)]
+        [Display(Name = "Código de recuperación")]
+        public string RecoveryCode { get; set; } = ""; // Código de recuperación ingresado por el usuario
+    }
+}

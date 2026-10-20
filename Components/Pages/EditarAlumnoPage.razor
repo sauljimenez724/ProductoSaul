@@ -1,0 +1,44 @@
+﻿@page "/persona/editar/{idPersona:int}"
+@rendermode InteractiveServer
+@inject IPersonaServices getPersonaService
+@inject NavigationManager navigation
+
+<PageTitle>Editar alumno</PageTitle>
+<div class="container" style="padding: 20px; border-radius: 10px;">
+    <h1 style="text-align: center; margin: 20px; background-color: black; color: wheat; font-family: 'Lucida Sans', 'Lucida Sans Regular', 'Lucida Grande', 'Lucida Sans Unicode', Geneva, Verdana, sans-serif; font-size: 32px;">
+    Editar alumno
+</h1>
+<FormularioPersonaComponent Metodo="ActualizarPersonaAsync" objetoPersona="getPersona" />
+</div>
+@if (!string.IsNullOrEmpty(mensaje))
+{
+    <div class="alert alert-success shadow p-3 mb-5 mt-3 rounded row">
+        <p role="alert">@mensaje</p>
+    </div>
+}
+
+@code {
+    [Parameter]
+    public int idPersona { get; set; }
+    PersonaEntity getPersona = new();
+    string mensaje = string.Empty;
+
+    protected override async Task OnParametersSetAsync()
+    {
+        var resultadoPersona = await getPersonaService.PersonaPorIdAsycn(idPersona);
+        if(resultadoPersona != null)
+        {
+            getPersona = resultadoPersona;    
+        }
+    }
+
+    private async Task ActualizarPersonaAsync()
+    {
+        mensaje = "¡Su edición o cambio de datos ha sido realizado con éxito!";
+        StateHasChanged();
+        await Task.Delay(2000);
+        await getPersonaService.ActualizarPersonaAsync(getPersona);
+        navigation.NavigateTo("/");
+    }
+
+}
